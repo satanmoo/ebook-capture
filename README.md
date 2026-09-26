@@ -75,6 +75,8 @@ When asked, pick one of:
 
 The chosen area is printed as a `--region "x y w h"` you can reuse. An area that goes a little past the window is trimmed to it, with a note.
 
+Area selection and coordinates have only been tested with one display at a time. With several displays at once, typed coordinates may be off; selecting with the mouse is the safer choice.
+
 ### Chrome
 
 - Make the viewer the active tab of your most recently used Chrome window, and click once on the page before starting. If the address bar has focus, → won't turn pages.
