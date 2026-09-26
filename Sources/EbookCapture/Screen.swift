@@ -29,13 +29,25 @@ public enum AppControl {
   /// Brings the app to the front via Launch Services (`open -b`), which works
   /// from a CLI process where NSRunningApplication.activate may be refused.
   public static func activate(_ app: AppTarget) throws {
+    guard activate(bundleID: app.bundleID) else { throw CLIError("cannot activate \(app.label)") }
+  }
+
+  @discardableResult
+  public static func activate(bundleID: String) -> Bool {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    p.arguments = ["-b", app.bundleID]
-    try p.run()
+    p.arguments = ["-b", bundleID]
+    do {
+      try p.run()
+    } catch {
+      return false
+    }
     p.waitUntilExit()
-    guard p.terminationStatus == 0 else { throw CLIError("cannot activate \(app.label)") }
+    return p.terminationStatus == 0
   }
+
+  /// The app in front right now.
+  public static var frontmost: NSRunningApplication? { NSWorkspace.shared.frontmostApplication }
 
   /// Presses → in the frontmost app. Keys posted to a background app's pid
   /// were ignored by every tested reader, so callers activate first.
@@ -70,6 +82,69 @@ public struct WindowInfo {
       return WindowInfo(id: id, frame: frame)
     }
     return nil
+  }
+
+  /// Whether a window still exists, and whether it's on the visible screen
+  /// (a minimized window, or one in a full-screen Space that was left, isn't).
+  public static func status(of id: CGWindowID) -> (exists: Bool, onScreen: Bool) {
+    func ids(_ options: CGWindowListOption) -> Set<CGWindowID> {
+      let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+      return Set(list.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
+    }
+    return (ids(.optionAll).contains(id), ids(.optionOnScreenOnly).contains(id))
+  }
+}
+
+/// The terminal to come back to when capturing ends: the first regular app
+/// among our parent processes (shell → terminal app), so it doesn't matter
+/// what was clicked in the meantime.
+public enum Launcher {
+  /// Walks up from `pid` and returns the first ancestor that `isApp`
+  /// accepts. Stops at launchd (pid 1) or after too many steps.
+  public static func appAncestor(of pid: pid_t, parent: (pid_t) -> pid_t?, isApp: (pid_t) -> Bool) -> pid_t? {
+    var current = parent(pid)
+    var steps = 0
+    while let p = current, p > 1, steps < 64 {
+      if isApp(p) { return p }
+      current = parent(p)
+      steps += 1
+    }
+    return nil
+  }
+
+  static func parentPID(_ pid: pid_t) -> pid_t? {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+    return info.kp_eproc.e_ppid
+  }
+
+  /// Bundle ID of the terminal that ran us. Under tmux the chain ends at
+  /// the tmux server instead, so fall back to the app in front at start
+  /// (unless that is the reader itself).
+  public static func terminalBundleID(frontmostAtStart: NSRunningApplication?, reader: AppTarget) -> String? {
+    let isApp: (pid_t) -> Bool = {
+      NSRunningApplication(processIdentifier: $0)?.activationPolicy == .regular
+    }
+    if let pid = appAncestor(of: getpid(), parent: parentPID, isApp: isApp),
+      let id = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+    {
+      return id
+    }
+    guard let front = frontmostAtStart?.bundleIdentifier, front != reader.bundleID else { return nil }
+    return front
+  }
+}
+
+/// End-of-run signal: a sound, then the terminal comes back to the front.
+public enum Notifier {
+  public static func finished(success: Bool, returnTo terminal: String?) async {
+    if let sound = NSSound(named: success ? "Glass" : "Basso") {
+      sound.play()
+      try? await Task.sleep(for: .seconds(max(sound.duration, 0.3)))
+    }
+    if let terminal { AppControl.activate(bundleID: terminal) }
   }
 }
 

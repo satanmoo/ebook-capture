@@ -84,6 +84,14 @@ public struct Prompter {
     }
   }
 
+  /// Default yes: continuing is what an interrupted user usually wants.
+  public func confirmResume(_ state: SessionState) throws -> Bool {
+    let answer = try ask(
+      "Found \(state.savedPages) pages from an unfinished capture of \(state.output). "
+        + "Continue from page \(state.savedPages + 1)? [Y/n] ")
+    return !["n", "no"].contains(answer.lowercased())
+  }
+
   /// ffmpeg-style: anything but y/yes keeps the existing file.
   public func confirmOverwrite(_ url: URL) throws -> Bool {
     let answer = try ask("File '\(url.path)' already exists. Overwrite? [y/N] ")

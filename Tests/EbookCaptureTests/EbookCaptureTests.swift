@@ -18,6 +18,7 @@ final class OptionsTests: XCTestCase {
     XCTAssertEqual(o.margin, 0)
     XCTAssertTrue(o.force)
     XCTAssertEqual(try Options.parse(["--output", "a", "--force"]).output, "a")
+    XCTAssertTrue(try Options.parse(["-o", "a", "--resume"]).resume)
   }
 
   func testDefaults() throws {
@@ -132,6 +133,14 @@ final class PrompterTests: XCTestCase {
     XCTAssertNil(try prompter([""]).pages())
   }
 
+  func testResumeDefaultsToYes() throws {
+    let s = SessionState(
+      output: URL(fileURLWithPath: "/tmp/pl.pdf"), app: .library, region: nil, margin: 10, maxPages: nil,
+      savedPages: 3, keyPresses: 3)
+    XCTAssertTrue(try prompter([""]).confirmResume(s))
+    XCTAssertFalse(try prompter(["n"]).confirmResume(s))
+  }
+
   func testWholeWindowChoice() throws {
     XCTAssertNil(try prompter(["9", "2"]).region())
   }
@@ -237,49 +246,67 @@ final class CaptureLoopTests: XCTestCase {
   /// or nothing new past the end. `failAt` makes that capture throw.
   final class FakeReader {
     let pages: [String]
-    var index = 0
+    var index: Int
     var failAt: Int?
     var grabs = 0
-    var saved: [String] = []
-    init(_ pages: [String], failAt: Int? = nil) { self.pages = pages; self.failAt = failAt }
+    var turns = 0
+    var saved: [(String, Int)] = []
+    init(_ pages: [String], showing index: Int = 0, failAt: Int? = nil) {
+      self.pages = pages
+      self.index = index
+      self.failAt = failAt
+    }
 
-    func loop(maxPages: Int?) -> CaptureLoop<String> {
+    func loop(maxPages: Int?, start: CaptureStart = CaptureStart()) -> CaptureLoop<String> {
       var loop = CaptureLoop<String>(
         maxPages: maxPages, waiter: PageWaiter(timeout: .milliseconds(60), interval: .milliseconds(5)),
         same: ==,
-        grab: { [unowned self] in
+        grab: { [self] in
           grabs += 1
           if grabs == failAt { throw CLIError("capture failed") }
           return pages[index]
         },
-        turnPage: { [unowned self] in index = min(index + 1, pages.count - 1) },
-        save: { [unowned self] frame, n in
-          XCTAssertEqual(n, saved.count + 1)
-          saved.append(frame)
-        })
+        turnPage: { [self] in
+          turns += 1
+          index = min(index + 1, pages.count - 1)
+        },
+        save: { [self] frame, n in saved.append((frame, n)) })
+      loop.start = start
       loop.log = { _ in }
       return loop
     }
+
+    var savedFrames: [String] { saved.map(\.0) }
+    var savedNumbers: [Int] { saved.map(\.1) }
   }
 
   func testStopsAtThePageLimit() async {
     let reader = FakeReader(["1", "2", "3", "4"])
     let result = await reader.loop(maxPages: 2).run()
-    XCTAssertEqual(result, .init(pages: 2, outcome: .finished))
-    XCTAssertEqual(reader.saved, ["1", "2"])
+    XCTAssertEqual(result, .init(pages: 2, keyPresses: 1, outcome: .finished))
+    XCTAssertEqual(reader.savedFrames, ["1", "2"])
+    XCTAssertEqual(reader.savedNumbers, [1, 2])
   }
 
   func testStopsAtTheEndOfTheBookWithoutDuplicates() async {
     let reader = FakeReader(["1", "2", "3"])
     let result = await reader.loop(maxPages: 10).run()
-    XCTAssertEqual(result, .init(pages: 3, outcome: .endOfBook))
-    XCTAssertEqual(reader.saved, ["1", "2", "3"])
+    // The third press changed nothing, so it isn't counted
+    XCTAssertEqual(result, .init(pages: 3, keyPresses: 2, outcome: .endOfBook))
+    XCTAssertEqual(reader.savedFrames, ["1", "2", "3"])
   }
 
   func testNoLimitGoesUntilTheEnd() async {
+    let result = await FakeReader(["1", "2", "3"]).loop(maxPages: nil).run()
+    XCTAssertEqual(result, .init(pages: 3, keyPresses: 2, outcome: .endOfBook))
+  }
+
+  func testUnchangedPageWithAProblemIsAFailureNotTheEnd() async {
     let reader = FakeReader(["1", "2", "3"])
-    let result = await reader.loop(maxPages: nil).run()
-    XCTAssertEqual(result, .init(pages: 3, outcome: .endOfBook))
+    var loop = reader.loop(maxPages: 10)
+    loop.diagnose = { reader.saved.count == 3 ? "You switched to WezTerm while capturing." : nil }
+    let result = await loop.run()
+    XCTAssertEqual(result, .init(pages: 3, keyPresses: 2, outcome: .failed("You switched to WezTerm while capturing.")))
   }
 
   func testSlowPageGetsASecondWait() async {
@@ -295,16 +322,19 @@ final class CaptureLoopTests: XCTestCase {
       save: { _, _ in })
     loop.log = { if $0.contains("waiting once more") { shown = "2" } }
     let result = await loop.run()
-    XCTAssertEqual(result, .init(pages: 2, outcome: .finished))
+    XCTAssertEqual(result, .init(pages: 2, keyPresses: 1, outcome: .finished))
     XCTAssertEqual(turns, 1, "the key must not be pressed again")
   }
 
-  func testFailureKeepsTheCountOfSavedPages() async {
+  func testFailureKeepsCountsAndExplainsIt() async {
+    // grabs: 1 = page 1, 2-3 = page 2 settles, 4-5 = page 3 settles, 6 fails
     let reader = FakeReader(["1", "2", "3", "4"], failAt: 6)
-    let result = await reader.loop(maxPages: 4).run()
-    XCTAssertEqual(result.pages, reader.saved.count)
-    XCTAssertGreaterThan(result.pages, 0)
-    XCTAssertEqual(result.outcome, .failed("capture failed"))
+    var loop = reader.loop(maxPages: 4)
+    loop.diagnose = { "The Chrome window was closed." }
+    let result = await loop.run()
+    XCTAssertEqual(result.pages, 3)
+    XCTAssertEqual(result.keyPresses, 3, "the press before the failed capture counts")
+    XCTAssertEqual(result.outcome, .failed("The Chrome window was closed. (capture failed)"))
   }
 
   func testStopRequestInterrupts() async {
@@ -312,7 +342,85 @@ final class CaptureLoopTests: XCTestCase {
     var loop = reader.loop(maxPages: 3)
     loop.stop = { reader.saved.count == 1 }
     let result = await loop.run()
-    XCTAssertEqual(result, .init(pages: 1, outcome: .interrupted))
+    XCTAssertEqual(result, .init(pages: 1, keyPresses: 0, outcome: .interrupted))
+  }
+
+  func testResumeTurnsFirstWhenTheLastSavedPageIsShown() async {
+    // 2 pages saved, 1 press: page 2 is on screen
+    let reader = FakeReader(["1", "2", "3", "4"], showing: 1)
+    let result = await reader.loop(maxPages: 4, start: .init(savedPages: 2, keyPresses: 1, turnFirst: true)).run()
+    XCTAssertEqual(reader.savedFrames, ["3", "4"])
+    XCTAssertEqual(reader.savedNumbers, [3, 4])
+    XCTAssertEqual(result, .init(pages: 4, keyPresses: 3, outcome: .finished))
+  }
+
+  func testResumeCapturesDirectlyWhenTheNextPageIsShown() async {
+    // 2 pages saved, 2 presses: page 3 is already on screen
+    let reader = FakeReader(["1", "2", "3", "4"], showing: 2)
+    let result = await reader.loop(maxPages: nil, start: .init(savedPages: 2, keyPresses: 2)).run()
+    XCTAssertEqual(reader.savedFrames, ["3", "4"])
+    XCTAssertEqual(reader.savedNumbers, [3, 4])
+    XCTAssertEqual(reader.turns, 2, "one turn to page 4, one that finds the end")
+    XCTAssertEqual(result, .init(pages: 4, keyPresses: 3, outcome: .endOfBook))
+  }
+
+  func testFailureReasons() {
+    func explain(_ exists: Bool, _ onScreen: Bool, _ front: Bool) -> String? {
+      FailureReason.explain(
+        windowExists: exists, onScreen: onScreen, readerIsFrontmost: front, frontmostName: "WezTerm", reader: "Chrome")
+    }
+    XCTAssertNil(explain(true, true, true))
+    XCTAssertEqual(explain(false, false, false), "The Chrome window was closed.")
+    XCTAssertEqual(explain(true, true, false), "You switched to WezTerm while capturing.")
+    XCTAssertEqual(
+      explain(true, false, true),
+      "The Chrome window is no longer on screen (minimized, or its full-screen Space was left).")
+    XCTAssertEqual(
+      explain(true, false, false),
+      "You switched to WezTerm while capturing. "
+        + "The Chrome window is no longer on screen (minimized, or its full-screen Space was left).")
+  }
+}
+
+final class SessionStateTests: XCTestCase {
+  func state(saved: Int, presses: Int) -> SessionState {
+    SessionState(
+      output: URL(fileURLWithPath: "/tmp/pl.pdf"), app: .chrome, region: Region(x: 1, y: 2, w: 3, h: 4),
+      margin: 10, maxPages: nil, savedPages: saved, keyPresses: presses)
+  }
+
+  func testRoundTrip() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let s = state(saved: 328, presses: 328)
+    try s.write(to: dir)
+    let read = try XCTUnwrap(SessionState.read(from: dir))
+    XCTAssertEqual(read, s)
+    XCTAssertEqual(read.app, .chrome)
+    XCTAssertEqual(read.captureRegion, Region(x: 1, y: 2, w: 3, h: 4))
+    XCTAssertNil(SessionState.read(from: dir.appendingPathComponent("missing")))
+  }
+
+  func testResumePointFromCounts() throws {
+    XCTAssertEqual(try state(saved: 328, presses: 327).resumeStart(), CaptureStart(savedPages: 328, keyPresses: 327, turnFirst: true))
+    XCTAssertEqual(try state(saved: 328, presses: 328).resumeStart(), CaptureStart(savedPages: 328, keyPresses: 328, turnFirst: false))
+    XCTAssertThrowsError(try state(saved: 328, presses: 300).resumeStart())
+    XCTAssertThrowsError(try state(saved: 328, presses: 329).resumeStart())
+  }
+}
+
+final class LauncherTests: XCTestCase {
+  func testFindsTheFirstAppAmongParents() {
+    // 500 ebook-capture → 400 zsh → 300 wezterm-gui (app) → 1 launchd
+    let parents: [pid_t: pid_t] = [500: 400, 400: 300, 300: 1]
+    XCTAssertEqual(Launcher.appAncestor(of: 500, parent: { parents[$0] }, isApp: { $0 == 300 }), 300)
+  }
+
+  func testNoAppUnderTmux() {
+    // 500 ebook-capture → 400 zsh → 350 tmux server → 1 launchd
+    let parents: [pid_t: pid_t] = [500: 400, 400: 350, 350: 1]
+    XCTAssertNil(Launcher.appAncestor(of: 500, parent: { parents[$0] }, isApp: { _ in false }))
   }
 }
 

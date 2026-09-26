@@ -95,6 +95,7 @@ public struct Options: Equatable {
   public var region: Region?
   public var margin = defaultMargin
   public var force = false
+  public var resume = false
   public var help = false
   public var version = false
 
@@ -123,6 +124,7 @@ public struct Options: Equatable {
         }
         o.app = app
       case "-f", "--force": o.force = true
+      case "--resume": o.resume = true
       case "-h", "--help": o.help = true
       case "--version": o.version = true
       default: throw UsageError("unknown option: \(flag)")
@@ -138,6 +140,7 @@ public let usage = """
 
   Usage:
     ebook-capture -o FILE --app APP [--pages N] [--region "x y w h" | --margin PX] [-f]
+    ebook-capture -o FILE --resume
 
   Options:
     -o, --output FILE   PDF to write: a name or a path (.pdf is added if missing)
@@ -150,6 +153,9 @@ public let usage = """
                         Default: the whole app window minus --margin
     --margin PX         inset for whole-window capture (default 10)
     -f, --force         overwrite FILE without asking
+    --resume            continue an unfinished capture of FILE (after Ctrl-C or
+                        an error) from the next page. Leave the reader on its
+                        page until then
     --version           print the version
     -h, --help          show this help
 

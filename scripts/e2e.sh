@@ -4,8 +4,8 @@
 #
 #   scripts/e2e.sh preview
 #       Automatic. Generates a numbered book, opens it in Preview and checks
-#       a full run, Ctrl-C, whole-window capture, leftovers, overwriting and
-#       stopping at the end of the book. (The leftover check puts one small
+#       a full run, Ctrl-C and --resume, whole-window capture, leftovers,
+#       overwriting and stopping at the end of the book. (The leftover check puts one small
 #       folder in your Trash.)
 #
 #   scripts/e2e.sh app 1|2 [--pages N] [--margin PX]
@@ -79,10 +79,10 @@ preview_checks() {
   first_page
   "$bin" -o "$work/full.pdf" --pages 10 --app 1 --region "$region" > "$work/full.log" 2>&1 || true
   expect '[[ "$(page_count "$work/full.pdf")" -eq 10 ]]' "PDF has 10 pages"
-  expect '! grep -q "did not change" "$work/full.log"' "every page turn was detected"
+  expect '! grep -q "waiting once more" "$work/full.log"' "every page turn was detected"
   expect '[[ ! -e "$tmp_root/full" ]]' "temporary folder removed"
 
-  echo "2. Ctrl-C during an interactive run"
+  echo "2. Ctrl-C during an interactive run, then --resume"
   first_page
   # Answers: output, pages, area (2 = whole window), app
   printf '%s\n' "$work/stopped" 10 2 1 | "$bin" > "$work/stopped.log" 2>&1 &
@@ -91,9 +91,18 @@ preview_checks() {
   kill -INT "$pid"
   local code=0
   wait "$pid" || code=$?
+  local partial
+  partial="$(page_count "$work/stopped.pdf")"
   expect '[[ $code -eq 130 ]]' "exit code 130 (got $code)"
-  expect '(( $(page_count "$work/stopped.pdf") > 0 ))' "partial PDF has pages"
-  expect '[[ ! -e "$tmp_root/stopped" ]]' "temporary folder removed"
+  expect '(( partial > 0 && partial < 10 ))' "partial PDF has $partial pages"
+  expect '[[ -f "$tmp_root/stopped/session.json" ]]' "pages and progress kept for --resume"
+  expect 'grep -q -- "--resume" "$work/stopped.log"' "resume command shown"
+  # Don't touch Preview: --resume works out the page from the counts
+  "$bin" -o "$work/stopped.pdf" --resume < /dev/null > "$work/resumed.log" 2>&1 || true
+  expect 'grep -q "Continuing from page $((partial + 1))" "$work/resumed.log"' "continued from page $((partial + 1))"
+  expect '[[ "$(page_count "$work/stopped.pdf")" -eq 10 ]]' "resumed PDF has 10 pages"
+  expect '! grep -q "waiting once more" "$work/resumed.log"' "every page turn was detected"
+  expect '[[ ! -e "$tmp_root/stopped" ]]' "temporary folder removed after finishing"
 
   echo "3. Whole window, name without .pdf, leftover temporary folder"
   first_page

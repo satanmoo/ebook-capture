@@ -39,12 +39,27 @@ Run `ebook-capture` with no options to be asked for each value instead.
 | `--app APP` | `1` / `library` for 교보도서관, `2` / `chrome` for Chrome |
 | `--region "x y w h"` | Capture area. Omit it to capture the whole window minus `--margin` (default 10). |
 | `-f, --force` | Overwrite an existing FILE without asking |
+| `--resume` | Continue an unfinished capture of FILE (see below) |
 
 Before capturing, the tool prints `Saving to: <path>`. If the file already exists, it asks `Overwrite? [y/N]` (or stops, when not run from a terminal, unless you pass `-f`).
 
-While it runs, the reader is brought to the front and → is pressed for every page, so **don't touch the keyboard or mouse**. Each page is captured once it has changed and stopped moving. If a page is slow, it waits another 5 seconds; if the page still hasn't changed, that's the end of the book and it stops there without saving a duplicate.
+While it runs, the reader is brought to the front and → is pressed for every page, so **don't touch the keyboard or mouse, and don't switch to another app**. Each page is captured once it has changed and stopped moving. If a page is slow, it waits another 5 seconds; if the page still hasn't changed, that's the end of the book and it stops there without saving a duplicate.
 
-Whatever ends the run — the page count, the end of the book, Ctrl-C, or an error — the pages captured so far are saved to the PDF. Captured pages are kept in a temporary folder until then; if an earlier run left one behind, it is moved to the Trash, not deleted.
+When it's done, you hear a sound and the terminal you started it from comes back to the front with the result.
+
+Whatever ends the run — the page count, the end of the book, Ctrl-C, or an error — the pages captured so far are saved to the PDF. If capturing fails, the message says why when it can tell (for example "You switched to WezTerm while capturing" or "The Chrome window is no longer on screen").
+
+### Continuing an unfinished capture
+
+After Ctrl-C or an error, the captured pages are also kept so you can pick up where it stopped:
+
+```bash
+ebook-capture -o linear-algebra --resume
+```
+
+It reuses the app, capture area and page limit from the first run and rebuilds the PDF with all the pages. **Leave the reader on its current page until you resume**: the next page is worked out from how many times → was pressed, so turning pages yourself (or reloading the tab) in between makes it skip or repeat pages. Running again without `--resume` asks whether to continue (in a terminal) or starts over.
+
+The kept pages wait in a temporary folder that macOS may clear after a few days. Starting over moves them to the Trash rather than deleting them.
 
 ### Choosing a capture area
 
