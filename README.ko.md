@@ -20,7 +20,11 @@
 brew install satanmoo/tap/ebook-capture
 ```
 
-업데이트는 `brew upgrade ebook-capture`로 합니다.
+업데이트할 때는 tap을 먼저 새로 받아야 해요. `brew upgrade`만 하면 새 버전이 아직 안 보일 수 있습니다.
+
+```bash
+brew update && brew upgrade ebook-capture
+```
 
 ## 사용법
 

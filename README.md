@@ -20,7 +20,11 @@ A macOS command-line tool that turns the pages of an ebook in **교보도서관*
 brew install satanmoo/tap/ebook-capture
 ```
 
-Update with `brew upgrade ebook-capture`.
+To update, refresh the tap first; `brew upgrade` alone may not see a new release yet:
+
+```bash
+brew update && brew upgrade ebook-capture
+```
 
 ## Usage
 
