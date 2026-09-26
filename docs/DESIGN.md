@@ -20,7 +20,7 @@
 | 항목 | 결정 | 이유 |
 |---|---|---|
 | 언어와 의존성 | Swift 하나. ScreenCaptureKit(캡처), CGEvent(키 입력), CoreGraphics(PDF). 외부 의존성 없음 | 한 언어로 전체 흐름을 다루고, 설치할 것이 없게 |
-| 배포 | Homebrew tap. 태그를 푸시하면 Actions가 Intel + Apple Silicon 공용 실행 파일을 Release에 올림 ([RELEASING.md](RELEASING.md)) | 사용자가 빌드나 버전을 직접 관리하지 않게. brew로 받은 파일은 공증 없이 실행됨 |
+| 배포 | Homebrew tap. Actions에서 버전을 입력하면 테스트, Intel + Apple Silicon 공용 실행 파일, GitHub Release, tap의 formula가 함께 갱신됨. 버전은 코드에 두지 않고 릴리스 빌드에서 기록 ([RELEASING.md](RELEASING.md)) | 사용자가 빌드나 버전을 직접 관리하지 않게. brew로 받은 파일은 공증 없이 실행됨 |
 | 앱 식별 | 번들 ID (`kr.co.kyobobook.KEL`, `com.google.Chrome`) | 교보도서관은 표시 이름(`교보도서관`)과 프로세스 이름(`KEL`)이 다르고, 이름은 시스템 언어와 한글 NFC/NFD 차이로 어긋날 수 있음. Chrome PWA(`com.google.Chrome.app.*`)는 번들 ID가 달라 섞이지 않음 |
 | 앱 앞으로 가져오기 | `open -b <번들 ID>` (Launch Services) | `NSRunningApplication.activate`는 CLI 프로세스에서 거부될 수 있음 |
 | 페이지 넘김 | 매 페이지 앱을 앞으로 가져온 뒤 CGEvent로 → 키 | 창이 뒤에 있으면 키가 무시됨 (아래 확인 결과) |

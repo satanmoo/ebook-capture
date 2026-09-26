@@ -1,7 +1,5 @@
 import Foundation
 
-public let version = "1.0.0"
-
 public enum CLI {
   public static func run(_ args: [String]) async -> Int32 {
     setvbuf(stdout, nil, _IOLBF, 0)  // progress lines show up even when piped

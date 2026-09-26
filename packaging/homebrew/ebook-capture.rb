@@ -1,11 +1,12 @@
-# Template for the tap repository satanmoo/homebrew-tap (Formula/ebook-capture.rb).
-# On each release, update `url` and `sha256` from the release's checksums.txt.
+# Template for satanmoo/homebrew-tap (Formula/ebook-capture.rb).
+# .github/workflows/release.yml fills in {{VERSION}} and {{SHA256}} and commits
+# the result to the tap on every release; don't edit the tap's copy by hand.
 class EbookCapture < Formula
   desc "Capture ebook pages from 교보도서관 or a Chrome web viewer into a PDF"
   homepage "https://github.com/satanmoo/ebook-capture"
-  url "https://github.com/satanmoo/ebook-capture/releases/download/v1.0.0/ebook-capture-v1.0.0-macos.tar.gz"
-  version "1.0.0"
-  sha256 "REPLACE_WITH_SHA256_FROM_CHECKSUMS_TXT"
+  url "https://github.com/satanmoo/ebook-capture/releases/download/v{{VERSION}}/ebook-capture-v{{VERSION}}-macos.tar.gz"
+  version "{{VERSION}}"
+  sha256 "{{SHA256}}"
   license "MIT"
 
   depends_on macos: :sonoma
