@@ -41,7 +41,7 @@ Run `ebook-capture` with no options to be asked for each value instead.
 | `-o, --output FILE` | PDF to write. A bare name is saved in the current folder; paths work too (`~/Documents/la`). `.pdf` is added if missing, and you are told when it is. |
 | `--pages N` | Stop after N captures. Omit it to keep going until the end of the book. In two-page view one capture holds two pages, so N is half the page count. |
 | `--app APP` | `1` / `library` for 교보도서관, `2` / `chrome` for Chrome |
-| `--region "x y w h"` | Capture area. Omit it to capture the whole window minus `--margin` (default 10). |
+| `--region select` / `--region "x y w h"` | Capture area: drag it with the mouse, or give coordinates. Omit it to capture the whole window minus `--margin` (default 10). |
 | `-f, --force` | Overwrite an existing FILE without asking |
 | `--resume` | Continue an unfinished capture of FILE (see below) |
 
@@ -67,14 +67,18 @@ The kept pages wait in a temporary folder that macOS may clear after a few days.
 
 ### Choosing a capture area
 
-When asked, pick **1) Custom** to type `x`, `y`, width and height, or **2) Whole window**.
+When asked, pick one of:
 
-To measure, press **Cmd+Shift+4**: the crosshair shows the cursor position. Hover over the top-left corner of the page for `x` and `y`, then drag to the bottom-right corner to see the width and height. Press Esc to cancel without taking a screenshot. The numbers are measured from the top-left corner of the screen the reader is on, which is what `--region` expects too.
+1. **Select with the mouse** (`--region select`): the screen dims and you drag over the page, like Cmd+Shift+4. It works over a full-screen reader too. If the reader isn't the window in front (say, another Chrome window came up instead of a full-screen viewer), switch to the reader and drag there: the window you drag over is the one that gets captured. Esc cancels.
+2. **Custom** (`--region "x y w h"`): type `x`, `y`, width and height. To measure, press **Cmd+Shift+4**: the crosshair shows the cursor position; hover over the top-left corner of the page for `x` and `y`, then drag to the bottom-right corner to see the width and height, and press Esc to cancel without taking a screenshot. The numbers are measured from the top-left corner of the screen the reader is on.
+3. **Whole window** (the default with flags): the reader window minus `--margin`.
+
+The chosen area is printed as a `--region "x y w h"` you can reuse. An area that goes a little past the window is trimmed to it, with a note.
 
 ### Chrome
 
 - Make the viewer the active tab of your most recently used Chrome window, and click once on the page before starting. If the address bar has focus, → won't turn pages.
-- Whole-window capture includes the tab bar and address bar. Use a custom area, or full screen, to capture just the page.
+- Whole-window capture includes the tab bar and address bar. Select the page with the mouse, or use full screen, to capture just the page.
 
 ## Image quality: why Retina matters
 

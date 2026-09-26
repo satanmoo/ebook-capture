@@ -20,8 +20,8 @@ public struct CaptureSession {
   /// Total page limit; nil = until the end of the book.
   public var pages: Int?
   public var app: AppTarget
-  /// Relative to the screen the app window is on; nil = whole window.
-  public var region: Region?
+  /// Fixed areas are relative to the screen the app window is on.
+  public var area: AreaChoice
   public var margin: Int
   public var pageTimeoutSeconds: Int
   public var tempRoot: URL
@@ -64,24 +64,41 @@ public struct CaptureSession {
     try AppControl.activate(app)
     try await Task.sleep(for: .milliseconds(1500))
 
-    guard let window = WindowInfo.front(of: pid) else {
-      throw CLIError("cannot find a \(app.label) window")
-    }
-    // Regions are given relative to the window's screen (as Cmd+Shift+4
-    // shows them); window frames and capture use global coordinates
-    let screen = Displays.origin(containing: CGPoint(x: window.frame.midX, y: window.frame.midY))
-    let area: Region
-    if let region {
-      area = region.translated(by: screen)
-      guard window.frame.contains(area.rect) else {
-        let w = try Region.inset(window.frame, margin: 0).translated(by: CGPoint(x: -screen.x, y: -screen.y))
-        throw CLIError("capture area \(region) is outside the \(app.label) window (\(w) on its screen)")
+    // The window to capture and the area in global coordinates. Fixed areas
+    // are relative to the window's screen (as Cmd+Shift+4 shows them).
+    let window: WindowInfo
+    let captureArea: Region
+    switch area {
+    case .select:
+      print("Drag over the page to capture (Esc to cancel)...")
+      guard let selected = await MainActor.run(body: { RegionSelector.select() }) else {
+        throw CLIError("area selection cancelled. Nothing was captured.")
       }
-    } else {
-      area = try Region.inset(window.frame, margin: margin)
-      print("Capture area (x y w h): \(area.translated(by: CGPoint(x: -screen.x, y: -screen.y)))")
+      // Capture the window that was dragged over: with several windows (a
+      // full-screen viewer next to another Chrome window) it may not be the
+      // one that came to the front
+      let center = CGPoint(x: selected.midX, y: selected.midY)
+      guard let dragged = WindowInfo.first(containing: center, in: WindowInfo.onScreen(of: pid)) else {
+        throw CLIError("the selected area isn't on a \(app.label) window")
+      }
+      window = dragged
+      captureArea = try Self.trim(
+        Region(x: Int(selected.minX), y: Int(selected.minY), w: Int(selected.width), h: Int(selected.height)),
+        to: window, app: app, note: false)
+    case .fixed(let region):
+      guard let front = WindowInfo.front(of: pid) else { throw CLIError("cannot find a \(app.label) window") }
+      window = front
+      captureArea = try Self.trim(region.translated(by: Self.screenOrigin(of: window)), to: window, app: app, note: true)
+    case .wholeWindow:
+      guard let front = WindowInfo.front(of: pid) else { throw CLIError("cannot find a \(app.label) window") }
+      window = front
+      captureArea = try Region.inset(window.frame, margin: margin)
     }
-    let capturer = try await WindowCapturer(window: window, region: area)
+    // What the user would type to get this area again, and what --resume uses
+    let screen = Self.screenOrigin(of: window)
+    let resolvedRegion = captureArea.translated(by: CGPoint(x: -screen.x, y: -screen.y))
+    print("Capture area (x y w h): \(resolvedRegion) (reuse with --region \"\(resolvedRegion)\")")
+    let capturer = try await WindowCapturer(window: window, region: captureArea)
 
     if resume == nil {
       // A leftover folder from an earlier run would mix its pages into this
@@ -125,9 +142,32 @@ public struct CaptureSession {
     let result = await loop.run()
 
     let exitCode = report(result)
-    let code = finish(result, exitCode: exitCode, dir: dir)
+    let saved: Region? = area == .wholeWindow ? nil : resolvedRegion
+    let code = finish(result, exitCode: exitCode, dir: dir, region: saved)
     await Notifier.finished(success: code == 0, returnTo: terminal)
     return code
+  }
+
+  /// Top-left corner (global points) of the screen a window is on.
+  static func screenOrigin(of window: WindowInfo) -> CGPoint {
+    Displays.origin(containing: CGPoint(x: window.frame.midX, y: window.frame.midY))
+  }
+
+  /// The part of a global area inside the window. An area slightly past the
+  /// window (a few points too far with Cmd+Shift+4) is trimmed; one that
+  /// barely overlaps it is an error that says where the window is.
+  static func trim(_ area: Region, to window: WindowInfo, app: AppTarget, note: Bool) throws -> Region {
+    let screen = screenOrigin(of: window)
+    let toScreen = CGPoint(x: -screen.x, y: -screen.y)
+    guard let inside = area.clipped(to: window.frame), inside.w >= 20, inside.h >= 20 else {
+      let f = window.frame.offsetBy(dx: toScreen.x, dy: toScreen.y)
+      throw CLIError("capture area \(area.translated(by: toScreen)) is outside the \(app.label) window, "
+        + "which spans x \(Int(f.minX))–\(Int(f.maxX)), y \(Int(f.minY))–\(Int(f.maxY)) on its screen")
+    }
+    if inside != area, note {
+      print("Note: capture area trimmed to the \(app.label) window: \(inside.translated(by: toScreen))")
+    }
+    return inside
   }
 
   private func report(_ result: CaptureLoop<Frame>.Result) -> Int32 {
@@ -149,7 +189,7 @@ public struct CaptureSession {
   /// Turns the captured pages into the PDF. A finished run removes the
   /// temporary folder; a run that stopped early keeps it, with its progress,
   /// so it can be resumed.
-  private func finish(_ result: CaptureLoop<Frame>.Result, exitCode: Int32, dir: URL) -> Int32 {
+  private func finish(_ result: CaptureLoop<Frame>.Result, exitCode: Int32, dir: URL, region: Region?) -> Int32 {
     let fm = FileManager.default
     let done = exitCode == 0
     guard result.pages > 0 else {

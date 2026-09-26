@@ -13,6 +13,19 @@ public struct UsageError: Error, CustomStringConvertible, Equatable {
 
 public let defaultMargin = 10
 
+/// `--region`: a fixed area, or `select` to drag one with the mouse.
+public enum AreaOption: Equatable {
+  case fixed(Region)
+  case select
+}
+
+/// The capture area a run uses.
+public enum AreaChoice: Equatable {
+  case wholeWindow
+  case fixed(Region)
+  case select
+}
+
 /// Validation rules shared by flags and interactive prompts.
 public enum Validate {
   public static func pages(_ text: String) throws -> Int {
@@ -92,7 +105,7 @@ public struct Options: Equatable {
   public var output: String?
   public var pages: Int?
   public var app: AppTarget?
-  public var region: Region?
+  public var region: AreaOption?
   public var margin = defaultMargin
   public var force = false
   public var resume = false
@@ -115,7 +128,9 @@ public struct Options: Equatable {
       switch flag {
       case "-o", "--output": o.output = try value(flag)
       case "--pages": o.pages = try Validate.pages(try value(flag))
-      case "--region": o.region = try Validate.region(try value(flag))
+      case "--region":
+        let v = try value(flag)
+        o.region = v == "select" ? .select : .fixed(try Validate.region(v))
       case "--margin": o.margin = try Validate.margin(try value(flag))
       case "--app":
         let v = try value(flag)
@@ -139,7 +154,7 @@ public let usage = """
   ebook-capture: capture ebook pages from 교보도서관 or a Chrome web viewer into one PDF
 
   Usage:
-    ebook-capture -o FILE --app APP [--pages N] [--region "x y w h" | --margin PX] [-f]
+    ebook-capture -o FILE --app APP [--pages N] [--region select | "x y w h" | --margin PX] [-f]
     ebook-capture -o FILE --resume
 
   Options:
@@ -148,8 +163,10 @@ public let usage = """
                         (the page stops changing). In two-page view one capture
                         holds two pages, so N is half the page count
     --app APP           1 or library (교보도서관), 2 or chrome (Chrome web viewer)
+    --region select     drag over the page with the mouse to choose the area
     --region "x y w h"  capture area, measured from the top-left corner of the
                         screen the app is on (Cmd+Shift+4 shows these numbers).
+                        An area slightly past the window is trimmed to it.
                         Default: the whole app window minus --margin
     --margin PX         inset for whole-window capture (default 10)
     -f, --force         overwrite FILE without asking

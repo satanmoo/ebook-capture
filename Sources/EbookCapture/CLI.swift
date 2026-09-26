@@ -51,20 +51,21 @@ public enum CLI {
       }
 
       let pages: Int?
-      let region: Region?
+      let area: AreaChoice
       let margin: Int
       var app: AppTarget
       if let resume {
         // Same settings as the run being continued, unless overridden
         pages = o.pages ?? resume.maxPages
-        region = o.region ?? resume.captureRegion
+        // A selection was saved as coordinates, so it isn't asked again
+        area = o.region.map(Self.choice) ?? resume.captureRegion.map { .fixed($0) } ?? .wholeWindow
         margin = resume.margin
         app = o.app ?? resume.app
       } else {
         // Flag runs (--app given) default to the end of the book and the
         // whole window without asking
         pages = try o.pages ?? (o.app == nil ? prompt.pages() : nil)
-        region = try o.region ?? (o.app == nil ? prompt.region() : nil)
+        area = try o.region.map(Self.choice) ?? (o.app == nil ? prompt.area() : .wholeWindow)
         margin = o.margin
         app = try o.app ?? prompt.app()
       }
@@ -95,7 +96,7 @@ public enum CLI {
       }
 
       let session = CaptureSession(
-        output: output, pages: pages, app: app, region: region, margin: margin,
+        output: output, pages: pages, app: app, area: area, margin: margin,
         pageTimeoutSeconds: env["EBOOK_CAPTURE_PAGE_TIMEOUT"].flatMap { Int($0) } ?? 5,
         tempRoot: tempRoot, resume: resume)
       return try await session.run()
@@ -106,6 +107,13 @@ public enum CLI {
     } catch {
       printError("Error: \(error)")
       return 1
+    }
+  }
+
+  private static func choice(_ option: AreaOption) -> AreaChoice {
+    switch option {
+    case .fixed(let r): return .fixed(r)
+    case .select: return .select
     }
   }
 }

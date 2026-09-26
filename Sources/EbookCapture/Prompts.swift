@@ -37,16 +37,17 @@ public struct Prompter {
     }
   }
 
-  /// nil = the whole window minus the margin.
-  public func region() throws -> Region? {
+  public func area() throws -> AreaChoice {
     while true {
       print("Capture area:")
-      print("  1) Custom (x, y, width, height)")
-      print("  2) Whole window")
-      switch try ask("Choose 1 or 2: ") {
-      case "1": return try customRegion()
-      case "2": return nil
-      default: print("Choose 1 or 2.")
+      print("  1) Select with the mouse")
+      print("  2) Custom (x, y, width, height)")
+      print("  3) Whole window")
+      switch try ask("Choose 1-3: ") {
+      case "1": return .select
+      case "2": return .fixed(try customRegion())
+      case "3": return .wholeWindow
+      default: print("Choose 1, 2 or 3.")
       }
     }
   }

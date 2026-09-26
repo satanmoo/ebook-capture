@@ -19,6 +19,14 @@ public struct Region: Equatable, CustomStringConvertible {
     Region(x: x + Int(origin.x.rounded()), y: y + Int(origin.y.rounded()), w: w, h: h)
   }
 
+  /// The part of this (global) region inside `rect`, or nil if they don't
+  /// overlap.
+  public func clipped(to rect: CGRect) -> Region? {
+    let r = self.rect.intersection(rect).integral
+    guard !r.isNull, r.width > 0, r.height > 0 else { return nil }
+    return Region(x: Int(r.minX), y: Int(r.minY), w: Int(r.width), h: Int(r.height))
+  }
+
   /// The window frame shrunk by `margin` on every side.
   public static func inset(_ window: CGRect, margin: Int) throws -> Region {
     let wx = Int(window.minX.rounded()), wy = Int(window.minY.rounded())

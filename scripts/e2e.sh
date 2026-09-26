@@ -5,7 +5,8 @@
 #   scripts/e2e.sh preview
 #       Automatic. Generates a numbered book, opens it in Preview and checks
 #       a full run, Ctrl-C and --resume, whole-window capture, leftovers,
-#       overwriting and stopping at the end of the book. (The leftover check puts one small
+#       overwriting, trimming an area past the window and stopping at the
+#       end of the book. (Selecting with the mouse is checked by hand.) (The leftover check puts one small
 #       folder in your Trash.)
 #
 #   scripts/e2e.sh app 1|2 [--pages N] [--margin PX]
@@ -84,8 +85,8 @@ preview_checks() {
 
   echo "2. Ctrl-C during an interactive run, then --resume"
   first_page
-  # Answers: output, pages, area (2 = whole window), app
-  printf '%s\n' "$work/stopped" 10 2 1 | "$bin" > "$work/stopped.log" 2>&1 &
+  # Answers: output, pages, area (3 = whole window), app
+  printf '%s\n' "$work/stopped" 10 3 1 | "$bin" > "$work/stopped.log" 2>&1 &
   local pid=$!
   sleep 5
   kill -INT "$pid"
@@ -130,7 +131,13 @@ preview_checks() {
   "$bin" -o "$work/whole.pdf" --pages 2 --app 1 --margin 60 -f < /dev/null > "$work/force.log" 2>&1 || true
   expect '[[ "$(page_count "$work/whole.pdf")" -eq 2 ]]' "-f overwrote it (2 pages)"
 
-  echo "5. End of the book (--pages larger than the book)"
+  echo "5. An area slightly past the window is trimmed"
+  first_page
+  "$bin" -o "$work/trim.pdf" --pages 2 --app 1 --region "$((x + 60)) $((y + 60)) $w $h" > "$work/trim.log" 2>&1 || true
+  expect 'grep -q "trimmed to the" "$work/trim.log"' "trim reported"
+  expect '[[ "$(page_count "$work/trim.pdf")" -eq 2 ]]' "captured 2 pages anyway"
+
+  echo "6. End of the book (--pages larger than the book)"
   first_page
   "$bin" -o "$work/end.pdf" --pages 15 --app 1 --margin 60 > "$work/end.log" 2>&1 || true
   expect 'grep -q "Reached the end of the book" "$work/end.log"' "end of the book reported"

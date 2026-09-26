@@ -66,22 +66,33 @@ public struct WindowInfo {
   /// Points, top-left origin.
   public let frame: CGRect
 
-  /// The app's frontmost normal window. Tiny windows are skipped: on macOS 26
-  /// each app's menu bar strip shows up as a layer-0 window (e.g. 1920x30).
-  public static func front(of pid: pid_t) -> WindowInfo? {
+  /// The app's normal windows on screen, front to back. Tiny windows are
+  /// skipped: on macOS 26 each app's menu bar strip shows up as a layer-0
+  /// window (e.g. 1920x30).
+  public static func onScreen(of pid: pid_t) -> [WindowInfo] {
     let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
       as? [[String: Any]] ?? []
-    for w in list {  // front to back
+    return list.compactMap { w in
       guard (w[kCGWindowOwnerPID as String] as? pid_t) == pid,
         (w[kCGWindowLayer as String] as? Int) == 0,
         let id = w[kCGWindowNumber as String] as? CGWindowID,
         let dict = w[kCGWindowBounds as String] as? NSDictionary,
         let frame = CGRect(dictionaryRepresentation: dict),
         frame.width >= 200, frame.height >= 200
-      else { continue }
+      else { return nil }
       return WindowInfo(id: id, frame: frame)
     }
-    return nil
+  }
+
+  /// The app's frontmost normal window.
+  public static func front(of pid: pid_t) -> WindowInfo? { onScreen(of: pid).first }
+
+  /// The frontmost of `windows` containing `point`. With a mouse selection
+  /// this is the window that was dragged over, which may not be the one
+  /// that came to the front (e.g. another Chrome window next to a
+  /// full-screen viewer).
+  public static func first(containing point: CGPoint, in windows: [WindowInfo]) -> WindowInfo? {
+    windows.first { $0.frame.contains(point) }
   }
 
   /// Whether a window still exists, and whether it's on the visible screen

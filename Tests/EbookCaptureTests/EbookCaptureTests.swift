@@ -14,7 +14,8 @@ final class OptionsTests: XCTestCase {
     XCTAssertEqual(o.output, "notes/책")
     XCTAssertEqual(o.pages, 120)
     XCTAssertEqual(o.app, .chrome)
-    XCTAssertEqual(o.region, Region(x: 10, y: 20, w: 300, h: 400))
+    XCTAssertEqual(o.region, .fixed(Region(x: 10, y: 20, w: 300, h: 400)))
+    XCTAssertEqual(try Options.parse(["--region", "select"]).region, .select)
     XCTAssertEqual(o.margin, 0)
     XCTAssertTrue(o.force)
     XCTAssertEqual(try Options.parse(["--output", "a", "--force"]).output, "a")
@@ -141,14 +142,15 @@ final class PrompterTests: XCTestCase {
     XCTAssertFalse(try prompter(["n"]).confirmResume(s))
   }
 
-  func testWholeWindowChoice() throws {
-    XCTAssertNil(try prompter(["9", "2"]).region())
+  func testAreaMenu() throws {
+    XCTAssertEqual(try prompter(["9", "1"]).area(), .select)
+    XCTAssertEqual(try prompter(["3"]).area(), .wholeWindow)
   }
 
   func testCustomRegionAsksEachValue() throws {
     // an invalid x, then a zero width, are asked again
-    let r = try prompter(["1", "-5", "120", "80", "0", "900", "1200"]).region()
-    XCTAssertEqual(r, Region(x: 120, y: 80, w: 900, h: 1200))
+    let r = try prompter(["2", "-5", "120", "80", "0", "900", "1200"]).area()
+    XCTAssertEqual(r, .fixed(Region(x: 120, y: 80, w: 900, h: 1200)))
   }
 
   func testAppChoice() throws {
@@ -192,6 +194,40 @@ final class RegionTests: XCTestCase {
     let r = Region(x: 110, y: 60, w: 200, h: 100)
     XCTAssertEqual(try r.pixelCrop(in: window, scale: 2), CGRect(x: 20, y: 20, width: 400, height: 200))
     XCTAssertEqual(try r.pixelCrop(in: window, scale: 1), CGRect(x: 10, y: 10, width: 200, height: 100))
+  }
+
+  func testClippedToWindow() {
+    // 3 points past the bottom of a full-screen window on a notch MacBook
+    let notch = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    XCTAssertEqual(Region(x: 90, y: 95, w: 1330, h: 890).clipped(to: notch), Region(x: 90, y: 95, w: 1330, h: 887))
+    XCTAssertEqual(Region(x: 90, y: 95, w: 100, h: 100).clipped(to: notch), Region(x: 90, y: 95, w: 100, h: 100))
+    XCTAssertNil(Region(x: 2000, y: 0, w: 10, h: 10).clipped(to: notch))
+  }
+
+  func testTrimKeepsAreasInsideAndRejectsOnesOutside() throws {
+    let window = WindowInfo(id: 1, frame: CGRect(x: 0, y: 33, width: 1512, height: 949))
+    XCTAssertEqual(
+      try CaptureSession.trim(Region(x: 90, y: 95, w: 1330, h: 890), to: window, app: .chrome, note: false),
+      Region(x: 90, y: 95, w: 1330, h: 887))
+    XCTAssertThrowsError(
+      try CaptureSession.trim(Region(x: 1500, y: 40, w: 100, h: 100), to: window, app: .chrome, note: false))
+  }
+
+  func testSelectionFromCocoaToScreenPoints() {
+    // Cocoa: bottom-left origin. A selection 91 from the left and 105 from
+    // the top of a 982-point-high screen, 877 high, starts at y = 0 in Cocoa.
+    let cocoa = CGRect(x: 91, y: 0, width: 1330, height: 877)
+    XCTAssertEqual(
+      SelectionGeometry.cgRect(fromCocoa: cocoa, primaryHeight: 982), CGRect(x: 91, y: 105, width: 1330, height: 877))
+  }
+
+  func testDraggedWindowIsTheOneUnderTheSelection() {
+    // Front to back: a normal Chrome window, then the viewer elsewhere
+    let other = WindowInfo(id: 1, frame: CGRect(x: 0, y: 33, width: 700, height: 949))
+    let viewer = WindowInfo(id: 2, frame: CGRect(x: 0, y: 33, width: 1512, height: 949))
+    XCTAssertEqual(WindowInfo.first(containing: CGPoint(x: 1000, y: 500), in: [other, viewer])?.id, 2)
+    XCTAssertEqual(WindowInfo.first(containing: CGPoint(x: 300, y: 500), in: [other, viewer])?.id, 1)
+    XCTAssertNil(WindowInfo.first(containing: CGPoint(x: 3000, y: 500), in: [other, viewer]))
   }
 
   func testRegionOutsideWindowFails() {
