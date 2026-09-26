@@ -137,11 +137,13 @@ public let usage = """
   ebook-capture: capture ebook pages from 교보도서관 or a Chrome web viewer into one PDF
 
   Usage:
-    ebook-capture -o FILE --pages N --app APP [--region "x y w h" | --margin PX] [-f]
+    ebook-capture -o FILE --app APP [--pages N] [--region "x y w h" | --margin PX] [-f]
 
   Options:
     -o, --output FILE   PDF to write: a name or a path (.pdf is added if missing)
-    --pages N           number of pages to capture
+    --pages N           stop after N captures. Default: until the end of the book
+                        (the page stops changing). In two-page view one capture
+                        holds two pages, so N is half the page count
     --app APP           1 or library (교보도서관), 2 or chrome (Chrome web viewer)
     --region "x y w h"  capture area, measured from the top-left corner of the
                         screen the app is on (Cmd+Shift+4 shows these numbers).

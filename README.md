@@ -27,7 +27,7 @@ Update with `brew upgrade ebook-capture`.
 Open the book in the reader, then run:
 
 ```bash
-ebook-capture -o linear-algebra --pages 120 --app 1
+ebook-capture -o linear-algebra --app 1
 ```
 
 Run `ebook-capture` with no options to be asked for each value instead.
@@ -35,14 +35,16 @@ Run `ebook-capture` with no options to be asked for each value instead.
 | Option | Meaning |
 |---|---|
 | `-o, --output FILE` | PDF to write. A bare name is saved in the current folder; paths work too (`~/Documents/la`). `.pdf` is added if missing, and you are told when it is. |
-| `--pages N` | Number of pages to capture |
+| `--pages N` | Stop after N captures. Omit it to keep going until the end of the book. In two-page view one capture holds two pages, so N is half the page count. |
 | `--app APP` | `1` / `library` for 교보도서관, `2` / `chrome` for Chrome |
 | `--region "x y w h"` | Capture area. Omit it to capture the whole window minus `--margin` (default 10). |
 | `-f, --force` | Overwrite an existing FILE without asking |
 
 Before capturing, the tool prints `Saving to: <path>`. If the file already exists, it asks `Overwrite? [y/N]` (or stops, when not run from a terminal, unless you pass `-f`).
 
-While it runs, the reader is brought to the front and → is pressed for every page, so **don't touch the keyboard or mouse**. Each page is captured once it has changed and stopped moving; if a page doesn't change within 5 seconds, you get a warning and it carries on. Press Ctrl-C to stop early and keep the pages captured so far.
+While it runs, the reader is brought to the front and → is pressed for every page, so **don't touch the keyboard or mouse**. Each page is captured once it has changed and stopped moving. If a page is slow, it waits another 5 seconds; if the page still hasn't changed, that's the end of the book and it stops there without saving a duplicate.
+
+Whatever ends the run — the page count, the end of the book, Ctrl-C, or an error — the pages captured so far are saved to the PDF. Captured pages are kept in a temporary folder until then; if an earlier run left one behind, it is moved to the Trash, not deleted.
 
 ### Choosing a capture area
 

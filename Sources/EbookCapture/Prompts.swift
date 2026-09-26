@@ -27,10 +27,13 @@ public struct Prompter {
     }
   }
 
-  public func pages() throws -> Int {
+  /// nil = until the end of the book.
+  public func pages() throws -> Int? {
     while true {
-      if let n = Validate.wholeNumber(try ask("Number of pages to capture: ")), n > 0 { return n }
-      print("Enter a whole number greater than 0.")
+      let answer = try ask("Number of pages to capture (press Enter to go until the end of the book): ")
+      if answer.isEmpty { return nil }
+      if let n = Validate.wholeNumber(answer), n > 0 { return n }
+      print("Enter a whole number greater than 0, or press Enter.")
     }
   }
 

@@ -128,6 +128,10 @@ final class PrompterTests: XCTestCase {
     XCTAssertEqual(try prompter(["zero", "0", "3"]).pages(), 3)
   }
 
+  func testEmptyPageCountMeansUntilTheEnd() throws {
+    XCTAssertNil(try prompter([""]).pages())
+  }
+
   func testWholeWindowChoice() throws {
     XCTAssertNil(try prompter(["9", "2"]).region())
   }
@@ -225,6 +229,95 @@ final class PageWaiterTests: XCTestCase {
     } catch {
       XCTAssertTrue(error is Interrupted)
     }
+  }
+}
+
+final class CaptureLoopTests: XCTestCase {
+  /// A fake reader: `pages` are the book; each turn shows the next page,
+  /// or nothing new past the end. `failAt` makes that capture throw.
+  final class FakeReader {
+    let pages: [String]
+    var index = 0
+    var failAt: Int?
+    var grabs = 0
+    var saved: [String] = []
+    init(_ pages: [String], failAt: Int? = nil) { self.pages = pages; self.failAt = failAt }
+
+    func loop(maxPages: Int?) -> CaptureLoop<String> {
+      var loop = CaptureLoop<String>(
+        maxPages: maxPages, waiter: PageWaiter(timeout: .milliseconds(60), interval: .milliseconds(5)),
+        same: ==,
+        grab: { [unowned self] in
+          grabs += 1
+          if grabs == failAt { throw CLIError("capture failed") }
+          return pages[index]
+        },
+        turnPage: { [unowned self] in index = min(index + 1, pages.count - 1) },
+        save: { [unowned self] frame, n in
+          XCTAssertEqual(n, saved.count + 1)
+          saved.append(frame)
+        })
+      loop.log = { _ in }
+      return loop
+    }
+  }
+
+  func testStopsAtThePageLimit() async {
+    let reader = FakeReader(["1", "2", "3", "4"])
+    let result = await reader.loop(maxPages: 2).run()
+    XCTAssertEqual(result, .init(pages: 2, outcome: .finished))
+    XCTAssertEqual(reader.saved, ["1", "2"])
+  }
+
+  func testStopsAtTheEndOfTheBookWithoutDuplicates() async {
+    let reader = FakeReader(["1", "2", "3"])
+    let result = await reader.loop(maxPages: 10).run()
+    XCTAssertEqual(result, .init(pages: 3, outcome: .endOfBook))
+    XCTAssertEqual(reader.saved, ["1", "2", "3"])
+  }
+
+  func testNoLimitGoesUntilTheEnd() async {
+    let reader = FakeReader(["1", "2", "3"])
+    let result = await reader.loop(maxPages: nil).run()
+    XCTAssertEqual(result, .init(pages: 3, outcome: .endOfBook))
+  }
+
+  func testSlowPageGetsASecondWait() async {
+    // The turn only shows up after the first wait has timed out
+    var turns = 0
+    var shown = "1"
+    var loop = CaptureLoop<String>(
+      maxPages: 2, waiter: PageWaiter(timeout: .milliseconds(60), interval: .milliseconds(5)),
+      same: ==,
+      grab: { shown },
+      turnPage: {
+        turns += 1
+        Task {
+          try await Task.sleep(for: .milliseconds(90))
+          shown = "2"
+        }
+      },
+      save: { _, _ in })
+    loop.log = { _ in }
+    let result = await loop.run()
+    XCTAssertEqual(result, .init(pages: 2, outcome: .finished))
+    XCTAssertEqual(turns, 1, "the key must not be pressed again")
+  }
+
+  func testFailureKeepsTheCountOfSavedPages() async {
+    let reader = FakeReader(["1", "2", "3", "4"], failAt: 6)
+    let result = await reader.loop(maxPages: 4).run()
+    XCTAssertEqual(result.pages, reader.saved.count)
+    XCTAssertGreaterThan(result.pages, 0)
+    XCTAssertEqual(result.outcome, .failed("capture failed"))
+  }
+
+  func testStopRequestInterrupts() async {
+    let reader = FakeReader(["1", "2", "3"])
+    var loop = reader.loop(maxPages: 3)
+    loop.stop = { reader.saved.count == 1 }
+    let result = await loop.run()
+    XCTAssertEqual(result, .init(pages: 1, outcome: .interrupted))
   }
 }
 

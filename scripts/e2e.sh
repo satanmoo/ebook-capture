@@ -4,7 +4,9 @@
 #
 #   scripts/e2e.sh preview
 #       Automatic. Generates a numbered book, opens it in Preview and checks
-#       a full run, Ctrl-C, whole-window capture, leftovers and overwriting.
+#       a full run, Ctrl-C, whole-window capture, leftovers, overwriting and
+#       stopping at the end of the book. (The leftover check puts one small
+#       folder in your Trash.)
 #
 #   scripts/e2e.sh app 1|2 [--pages N] [--margin PX]
 #       Semi-automatic. Captures N pages (default 3) from the book you have
@@ -99,7 +101,7 @@ preview_checks() {
   sips -s format png "$book" --out "$tmp_root/whole/page-99999.png" >/dev/null
   (cd "$work" && "$bin" -o whole --pages 3 --app 1 --margin 60 > whole.log 2>&1) || true
   expect 'grep -q "added .pdf extension" "$work/whole.log"' ".pdf extension added and reported"
-  expect 'grep -q "Removing leftover" "$work/whole.log"' "leftover folder reported"
+  expect 'grep -q "Moved a leftover capture folder to the Trash" "$work/whole.log"' "leftover folder moved to the Trash"
   expect '[[ "$(page_count "$work/whole.pdf")" -eq 3 ]]' "PDF has 3 pages (leftover page not included)"
 
   echo "4. Existing output"
@@ -114,6 +116,12 @@ preview_checks() {
   expect '[[ "$(md5 -q "$work/whole.pdf")" == "$before" ]]' "existing file untouched"
   "$bin" -o "$work/whole.pdf" --pages 2 --app 1 --margin 60 -f < /dev/null > "$work/force.log" 2>&1 || true
   expect '[[ "$(page_count "$work/whole.pdf")" -eq 2 ]]' "-f overwrote it (2 pages)"
+
+  echo "5. End of the book (--pages larger than the book)"
+  first_page
+  "$bin" -o "$work/end.pdf" --pages 15 --app 1 --margin 60 > "$work/end.log" 2>&1 || true
+  expect 'grep -q "Reached the end of the book" "$work/end.log"' "end of the book reported"
+  expect '[[ "$(page_count "$work/end.pdf")" -eq 10 ]]' "PDF has all 10 pages of the book, no duplicates"
 }
 
 app_check() {

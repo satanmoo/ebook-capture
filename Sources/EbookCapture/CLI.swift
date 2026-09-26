@@ -24,8 +24,9 @@ public enum CLI {
       if output.addedExtension {
         print("Note: added .pdf extension (\(output.input) → \(output.url.lastPathComponent))")
       }
-      let pages = try o.pages ?? prompt.pages()
-      // Flag runs (--app given) default to the whole window without asking
+      // Flag runs (--app given) default to the end of the book and the whole
+      // window without asking
+      let pages = try o.pages ?? (o.app == nil ? prompt.pages() : nil)
       let region = try o.region ?? (o.app == nil ? prompt.region() : nil)
       var app = try o.app ?? prompt.app()
 
@@ -66,9 +67,5 @@ public enum CLI {
       printError("Error: \(error)")
       return 1
     }
-  }
-
-  private static func printError(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
   }
 }
