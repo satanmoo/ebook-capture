@@ -3,6 +3,9 @@ import Foundation
 public enum CLI {
   public static func run(_ args: [String]) async -> Int32 {
     setvbuf(stdout, nil, _IOLBF, 0)  // progress lines show up even when piped
+    if args.first == SelectionHelper.command {
+      return await MainActor.run { SelectionHelper.runChild() }
+    }
     do {
       let o = try Options.parse(args)
       if o.help {

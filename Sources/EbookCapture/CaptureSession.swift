@@ -71,7 +71,7 @@ public struct CaptureSession {
     switch area {
     case .select:
       print("Drag over the page to capture (Esc to cancel)...")
-      guard let selected = await MainActor.run(body: { RegionSelector.select() }) else {
+      guard let selected = try SelectionHelper.select() else {
         throw CLIError("area selection cancelled. Nothing was captured.")
       }
       // Capture the window that was dragged over: with several windows (a

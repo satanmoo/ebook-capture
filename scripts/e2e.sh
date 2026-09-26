@@ -6,7 +6,8 @@
 #       Automatic. Generates a numbered book, opens it in Preview and checks
 #       a full run, Ctrl-C and --resume, whole-window capture, leftovers,
 #       overwriting, trimming an area past the window and stopping at the
-#       end of the book. (Selecting with the mouse is checked by hand.) (The leftover check puts one small
+#       end of the book. Selecting with the mouse uses a preset area; a real
+#       drag is checked by hand. (The leftover check puts one small
 #       folder in your Trash.)
 #
 #   scripts/e2e.sh app 1|2 [--pages N] [--margin PX]
@@ -137,7 +138,19 @@ preview_checks() {
   expect 'grep -q "trimmed to the" "$work/trim.log"' "trim reported"
   expect '[[ "$(page_count "$work/trim.pdf")" -eq 2 ]]' "captured 2 pages anyway"
 
-  echo "6. End of the book (--pages larger than the book)"
+  echo "6. Select with the mouse, then capture several pages"
+  # The helper shows the overlay briefly and answers with this area instead
+  # of waiting for a drag. Turning pages after an overlay is what used to
+  # make the process quit silently.
+  first_page
+  code=0
+  EBOOK_CAPTURE_TEST_SELECTION="$region" "$bin" -o "$work/select.pdf" --pages 3 --app 1 --region select \
+    > "$work/select.log" 2>&1 || code=$?
+  expect '[[ $code -eq 0 ]]' "exit code 0 (got $code)"
+  expect 'grep -q "Capture area (x y w h): $region" "$work/select.log"' "selected area used ($region)"
+  expect '[[ "$(page_count "$work/select.pdf")" -eq 3 ]]' "PDF has 3 pages"
+
+  echo "7. End of the book (--pages larger than the book)"
   first_page
   "$bin" -o "$work/end.pdf" --pages 15 --app 1 --margin 60 > "$work/end.log" 2>&1 || true
   expect 'grep -q "Reached the end of the book" "$work/end.log"' "end of the book reported"

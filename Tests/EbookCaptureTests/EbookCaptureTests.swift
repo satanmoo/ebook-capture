@@ -221,6 +221,13 @@ final class RegionTests: XCTestCase {
       SelectionGeometry.cgRect(fromCocoa: cocoa, primaryHeight: 982), CGRect(x: 91, y: 105, width: 1330, height: 877))
   }
 
+  func testSelectionHelperOutput() {
+    XCTAssertEqual(SelectionHelper.parse("91 105 1330 877\n"), CGRect(x: 91, y: 105, width: 1330, height: 877))
+    XCTAssertEqual(SelectionHelper.parse("-1512 98 300 400"), CGRect(x: -1512, y: 98, width: 300, height: 400))
+    XCTAssertNil(SelectionHelper.parse(""))
+    XCTAssertNil(SelectionHelper.parse("1 2 0 4"))
+  }
+
   func testDraggedWindowIsTheOneUnderTheSelection() {
     // Front to back: a normal Chrome window, then the viewer elsewhere
     let other = WindowInfo(id: 1, frame: CGRect(x: 0, y: 33, width: 700, height: 949))

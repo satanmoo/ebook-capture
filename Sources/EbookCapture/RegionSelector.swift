@@ -11,14 +11,66 @@ public enum SelectionGeometry {
   }
 }
 
+/// Runs the selection overlay in a child process (`ebook-capture
+/// __select-area`). Once a process has become an NSApplication, bringing
+/// another app forward through Launch Services (`open -b`, which every page
+/// turn does) makes AppKit quit it silently with exit code 0, so the
+/// capturing process must never touch AppKit.
+public enum SelectionHelper {
+  public static let command = "__select-area"
+  /// Test hook: the helper shows the overlay briefly and answers with this
+  /// "x y w h" (global points) instead of waiting for a drag.
+  public static let testSelectionVariable = "EBOOK_CAPTURE_TEST_SELECTION"
+
+  /// The selection in CG global points, or nil when cancelled with Esc.
+  public static func select() throws -> CGRect? {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
+    p.arguments = [command]
+    let out = Pipe()
+    p.standardOutput = out
+    try p.run()
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    switch p.terminationStatus {
+    case 0:
+      guard let rect = parse(String(decoding: data, as: UTF8.self)) else {
+        throw CLIError("the area selection returned nothing usable")
+      }
+      return rect
+    case 2: return nil
+    default: throw CLIError("the area selection failed (exit code \(p.terminationStatus))")
+    }
+  }
+
+  /// "x y w h" → rect.
+  public static func parse(_ text: String) -> CGRect? {
+    let v = text.split(whereSeparator: \.isWhitespace).compactMap { Double($0) }
+    guard v.count == 4, v[2] > 0, v[3] > 0 else { return nil }
+    return CGRect(x: v[0], y: v[1], width: v[2], height: v[3])
+  }
+
+  /// The child side: show the overlay, print the selection, exit 0 (or 2
+  /// when cancelled).
+  @MainActor
+  public static func runChild() -> Int32 {
+    let preset = ProcessInfo.processInfo.environment[testSelectionVariable].flatMap(parse)
+    guard let r = RegionSelector.select(preset: preset) else { return 2 }
+    print("\(Int(r.minX)) \(Int(r.minY)) \(Int(r.width)) \(Int(r.height))")
+    return 0
+  }
+}
+
 /// Lets the user drag a rectangle over the page, like Cmd+Shift+4. The
 /// overlay is a non-activating panel on every screen that joins every Space,
 /// so it shows over a full-screen reader without switching Spaces or taking
 /// focus from it. Tested over full-screen Chrome and 교보도서관.
 public enum RegionSelector {
   /// The selection in CG global points, or nil when cancelled with Esc.
+  /// With `preset`, the overlay is shown briefly and `preset` is returned
+  /// (for automated tests). Runs in the helper process only.
   @MainActor
-  public static func select() -> CGRect? {
+  public static func select(preset: CGRect? = nil) -> CGRect? {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)  // no Dock icon, never becomes active
     app.finishLaunching()
@@ -42,7 +94,12 @@ public enum RegionSelector {
     let escape = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
       if event.keyCode == 53 { selection.state = .cancelled }
     }
+    let presetDeadline = Date().addingTimeInterval(0.5)
     while selection.state == .selecting {
+      if preset != nil, Date() > presetDeadline {
+        selection.state = .preset
+        break
+      }
       if let event = app.nextEvent(
         matching: .any, until: Date(timeIntervalSinceNow: 0.05), inMode: .default, dequeue: true)
       {
@@ -52,6 +109,7 @@ public enum RegionSelector {
     if let escape { NSEvent.removeMonitor(escape) }
     panels.forEach { $0.orderOut(nil) }
 
+    if selection.state == .preset { return preset }
     guard case .selected(let cocoa) = selection.state else { return nil }
     return SelectionGeometry.cgRect(fromCocoa: cocoa, primaryHeight: primary.frame.height).integral
   }
@@ -63,6 +121,7 @@ final class Selection {
     case selecting
     case selected(CGRect)  // Cocoa global coordinates
     case cancelled
+    case preset  // test hook: answer with the preset selection
   }
 
   var state = State.selecting
