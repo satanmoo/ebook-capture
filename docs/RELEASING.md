@@ -8,7 +8,7 @@
 
 1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → **Generate new token**
    - Token name: `ebook-capture tap` 등
-   - Expiration: 원하는 기간 (만료되면 아래 "실패했을 때" 참고)
+   - Expiration: 최대 1년 (fine-grained 토큰은 그보다 길게 정할 수 없다. 만료되면 아래 "실패했을 때" 참고)
    - Repository access: **Only select repositories** → `satanmoo/homebrew-tap`
    - Permissions → Repository permissions → **Contents: Read and write** (다른 권한은 주지 않는다)
 2. 만든 토큰을 이 저장소의 secret으로 등록한다. 둘 중 하나로 하면 된다.
