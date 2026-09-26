@@ -97,11 +97,15 @@ preview_checks() {
   expect '(( partial > 0 && partial < 10 ))' "partial PDF has $partial pages"
   expect '[[ -f "$tmp_root/stopped/session.json" ]]' "pages and progress kept for --resume"
   expect 'grep -q -- "--resume" "$work/stopped.log"' "resume command shown"
-  # Don't touch Preview: --resume works out the page from the counts
-  "$bin" -o "$work/stopped.pdf" --resume < /dev/null > "$work/resumed.log" 2>&1 || true
+  # Don't touch Preview: --resume works out the page from the counts.
+  # A limit past the book makes it run to the end, so a repeated or skipped
+  # page at the seam shows up as 11 or 9 pages.
+  "$bin" -o "$work/stopped.pdf" --resume --pages 15 < /dev/null > "$work/resumed.log" 2>&1 || true
   expect 'grep -q "Continuing from page $((partial + 1))" "$work/resumed.log"' "continued from page $((partial + 1))"
-  expect '[[ "$(page_count "$work/stopped.pdf")" -eq 10 ]]' "resumed PDF has 10 pages"
-  expect '! grep -q "waiting once more" "$work/resumed.log"' "every page turn was detected"
+  expect 'grep -q "Reached the end of the book" "$work/resumed.log"' "resumed run went to the end of the book"
+  expect '[[ "$(page_count "$work/stopped.pdf")" -eq 10 ]]' "resumed PDF has exactly 10 pages (nothing repeated or skipped)"
+  # The only extra wait should be the one that finds the end of the book
+  expect '[[ "$(grep -c "waiting once more" "$work/resumed.log")" -eq 1 ]]' "every page turn was detected (one wait, at the end)"
   expect '[[ ! -e "$tmp_root/stopped" ]]' "temporary folder removed after finishing"
 
   echo "3. Whole window, name without .pdf, leftover temporary folder"
