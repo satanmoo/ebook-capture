@@ -49,7 +49,7 @@ Before capturing, the tool prints `Saving to: <path>`. If the file already exist
 
 While it runs, the reader is brought to the front and → is pressed for every page, so **don't touch the keyboard or mouse, and don't switch to another app**. Each page is captured once it has changed and stopped moving. If a page is slow, it waits another 5 seconds; if the page still hasn't changed, that's the end of the book and it stops there without saving a duplicate.
 
-When it's done, you hear a sound and the terminal you started it from comes back to the front with the result.
+When it's done — or stops early, including cancelling the area selection — you hear a sound and the terminal you started it from comes back to the front with the result.
 
 Whatever ends the run — the page count, the end of the book, Ctrl-C, or an error — the pages captured so far are saved to the PDF. If capturing fails, the message says why when it can tell (for example "You switched to WezTerm while capturing" or "The Chrome window is no longer on screen").
 

@@ -50,7 +50,6 @@ public struct CaptureSession {
   /// capturing failed (the pages captured before the failure are still saved).
   /// The caller has already confirmed overwriting an existing output.
   public func run() async throws -> Int32 {
-    let fm = FileManager.default
     let dir = Self.folder(for: output, in: tempRoot)
     // Come back here at the end, whatever gets clicked in the meantime
     let terminal = Launcher.terminalBundleID(frontmostAtStart: AppControl.frontmost, reader: app)
@@ -62,6 +61,19 @@ public struct CaptureSession {
     }
     try Permissions.check()
     try AppControl.activate(app)
+    do {
+      return try await captureInFront(pid: pid, dir: dir, start: start, terminal: terminal)
+    } catch {
+      // The reader is in front (maybe a full-screen Space): the message in
+      // the terminal would go unseen without bringing it back
+      await Notifier.finished(success: false, returnTo: terminal)
+      throw error
+    }
+  }
+
+  /// Everything after the reader has been brought to the front.
+  private func captureInFront(pid: pid_t, dir: URL, start: CaptureStart, terminal: String?) async throws -> Int32 {
+    let fm = FileManager.default
     try await Task.sleep(for: .milliseconds(1500))
 
     // The window to capture and the area in global coordinates. Fixed areas
