@@ -1,0 +1,46 @@
+name: release
+
+# Push a tag like v1.0.0 to publish a GitHub Release with a universal
+# (Apple Silicon + Intel) binary. See docs/RELEASING.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the CLI version
+        run: |
+          v="$(sed -nE 's/^public let version = "(.*)"/\1/p' Sources/EbookCapture/CLI.swift)"
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "CLI.swift says $v but the tag is $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - run: swift test
+
+      - name: Build universal binary
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Package
+        run: |
+          # The output folder differs between toolchains, so ask SwiftPM
+          bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/ebook-capture"
+          lipo -info "$bin"
+          "$bin" --version
+          archive="ebook-capture-$GITHUB_REF_NAME-macos.tar.gz"
+          tar -czf "$archive" -C "$(dirname "$bin")" ebook-capture
+          shasum -a 256 "$archive" | tee checksums.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ebook-capture-*.tar.gz checksums.txt \
+            --title "$GITHUB_REF_NAME" --generate-notes

@@ -1,0 +1,4 @@
+.build/
+.swiftpm/
+*.pdf
+.DS_Store
