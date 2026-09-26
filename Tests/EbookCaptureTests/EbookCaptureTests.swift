@@ -283,22 +283,17 @@ final class CaptureLoopTests: XCTestCase {
   }
 
   func testSlowPageGetsASecondWait() async {
-    // The turn only shows up after the first wait has timed out
+    // The turn shows up only once the first wait has timed out, which the
+    // loop announces in its log; no timing assumptions.
     var turns = 0
     var shown = "1"
     var loop = CaptureLoop<String>(
       maxPages: 2, waiter: PageWaiter(timeout: .milliseconds(60), interval: .milliseconds(5)),
       same: ==,
       grab: { shown },
-      turnPage: {
-        turns += 1
-        Task {
-          try await Task.sleep(for: .milliseconds(90))
-          shown = "2"
-        }
-      },
+      turnPage: { turns += 1 },
       save: { _, _ in })
-    loop.log = { _ in }
+    loop.log = { if $0.contains("waiting once more") { shown = "2" } }
     let result = await loop.run()
     XCTAssertEqual(result, .init(pages: 2, outcome: .finished))
     XCTAssertEqual(turns, 1, "the key must not be pressed again")
